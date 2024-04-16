@@ -1,5 +1,6 @@
 import pygame, sys, time, math, os, random
 import neat
+from neat.checkpoint import Checkpointer
 
 # Set up the window
 WINDOWWIDTH = 1920
@@ -24,11 +25,17 @@ BROWN = (139,69,19)
 DGREY = (25,25,25)
 
 # set up best times
-best_sector1 = float('inf')
-best_sector2 = float('inf')
-best_sector3 = float('inf')
-best_finish = float('inf')
+best_sector1 = 6.84
+best_sector2 = 14.51
+best_sector3 = 21.67
+best_finish = 29.68
+gen_sector1 = float('inf')
+gen_sector2 = float('inf')
+gen_sector3 = float('inf')
+gen_finish = float('inf')
 best_score = 0
+
+total_distance = 90
 
 # set up variables
 class Car:
@@ -39,9 +46,9 @@ class Car:
         self.pos = [600, 150]
         self.angle = 0
         self.speed = 2
-        self.max_speed = 8
-        self.acceleration = 0.5
-        self.deceleration = 0.25
+        self.max_speed = 5
+        self.acceleration = 1
+        self.deceleration = 0.5
         self.turnspeed = 1.5
         self.center = [self.pos[0] + 50, self.pos[1] + 50]
         self.radars = []
@@ -50,12 +57,15 @@ class Car:
         self.goal = False
         self.distance = 0
         self.time_spent = 0
+        self.time_reward = 0
         self.action = ""
         self.sector1 = float('inf')
         self.sector2 = float('inf')
         self.sector3 = float('inf')
         self.finish = float('inf')
         self.finish_time = None
+        self.action_reward = 0
+
         
     def draw(self, windowSurface):
         self.draw_radar(windowSurface)
@@ -106,17 +116,15 @@ class Car:
             self.speed += self.acceleration
             if self.speed > self.max_speed:
                 self.speed = self.max_speed
-        if self.action == "down":
-            self.speed -= self.deceleration
-            if self.speed < 2:
-                self.speed = 2
-        if self.speed > 4:
+        if self.speed < 2:
+            self.speed = 2
+        if self.speed > 2.5:
             self.speed -= self.deceleration
 
         self.pos[0] += math.cos(math.radians(self.angle)) * self.speed
         self.pos[1] -= math.sin(math.radians(self.angle)) * self.speed
 
-        self.distance += self.speed
+        self.distance += self.speed * 0.0166667
         self.time_spent = elapsed_time
 
         self.rotateSurface = self.rot_center(self.surface, self.angle)
@@ -149,7 +157,13 @@ class Car:
         return self.is_alive
     
     def get_reward(self):
-        return self.distance / 10
+        distance_reward = self.distance / total_distance
+        if distance_reward > 1:
+            distance_reward = 1
+
+        self.action_reward += 0.01 if self.action == "up" else 0
+
+        return (distance_reward * 100) + self.time_reward + self.action_reward
     
     def rot_center(self, image, angle):
         orig_rect = image.get_rect()
@@ -184,12 +198,12 @@ def run_car(genomes, config):
         car.sector3_reached = False
         car.finish_reached = False
     
-    global generation, best_sector1, best_sector2, best_sector3, best_finish, best_score, fps
+    global generation, best_sector1, best_sector2, best_sector3, best_finish, best_score, fps, gen_sector1, gen_sector2, gen_sector3, gen_finish
     generation += 1
     while True:
         windowSurface.fill(BLACK)
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_q):
                 sys.exit(0)
 
         for index, car in enumerate(cars):
@@ -198,10 +212,8 @@ def run_car(genomes, config):
                 car.action = "left"
             if output[1] > 0.5:
                 car.action = "right"
-            if output[2] > 0.4:
+            if output[2] > 0.5:
                 car.action = "up"
-            if output[3] > 0.7:
-                car.action = "down"
             
         remain_cars = 0
         elapsed_time = (time.time() - start_time) * (fps / 60)
@@ -214,7 +226,7 @@ def run_car(genomes, config):
                 remain_cars += 1
                 car.update(map, elapsed_time)
                 car.action = ""
-                genomes[index][1].fitness = car.get_reward() - (elapsed_time * elapsed_time * 0.2)
+                genomes[index][1].fitness = car.get_reward()
                 if genomes[index][1].fitness > best_score:
                     best_score = genomes[index][1].fitness
                 
@@ -223,33 +235,33 @@ def run_car(genomes, config):
                     car.sector1_reached = True
                     if car.sector1 < best_sector1:
                         best_sector1 = elapsed_time
-                        car.distance += 400 - (car.sector1 * 10)
-                    else:
-                        car.distance += 400 - (car.sector1 * 10)
+                    if car.sector1 < gen_sector1:
+                        gen_sector1 = car.sector1
+                    car.time_reward += (best_sector1 / car.sector1) * 5
 
                 if car.sector2 != float('inf') and not car.sector2_reached:
                     car.sector2_reached = True
                     if car.sector2 < best_sector2:
                         best_sector2 = elapsed_time
-                        car.distance += 600 - (car.sector2 * 10)
-                    else:
-                        car.distance += 600 - (car.sector2 * 10)
+                    if car.sector2 < gen_sector2:
+                        gen_sector2 = car.sector2
+                    car.time_reward += (best_sector2 / car.sector2) * 10
                 
                 if car.sector3 != float('inf') and not car.sector3_reached:
                     car.sector3_reached = True
                     if car.sector3 < best_sector3:
                         best_sector3 = elapsed_time
-                        car.distance += 800 - (car.sector3 * 10)
-                    else:
-                        car.distance += 800 - (car.sector3 * 10)
+                    if car.sector3 < gen_sector3:
+                        gen_sector3 = car.sector3
+                    car.time_reward += (best_sector3 / car.sector3) * 15
                 
                 if car.finish != float('inf') and not car.finish_reached:
                     car.finish_reached = True
                     if car.finish < best_finish:
                         best_finish = elapsed_time
-                        car.distance += 1000 - (car.finish * 10)
-                    else:
-                        car.distance += 1000 - (car.finish * 10)
+                    if car.finish < gen_finish:
+                        gen_finish = car.finish
+                    car.time_reward += (best_finish / car.finish) * 20
 
                 # Check for best score this run
                 if genomes[index][1].fitness > current_best:
@@ -279,62 +291,75 @@ def run_car(genomes, config):
         text_rect.center = (1600, 150)
         windowSurface.blit(text, text_rect)
 
-        text = font.render("Alltime top Score: " + "{:.2f}".format(best_score), True, (WHITE))
+        # text = font.render("Alltime top Score: " + "{:.2f}".format(best_score), True, (WHITE))
+        # text_rect = text.get_rect()
+        # text_rect.center = (1600, 200)
+        # windowSurface.blit(text, text_rect)
+
+        # text = font.render("Current top Score: " + "{:.2f}".format(current_best), True, (WHITE))
+        # text_rect = text.get_rect()
+        # text_rect.center = (1600, 225)
+        # windowSurface.blit(text, text_rect)
+
+        text = font.render("Time elapsed: " + timer, True, (WHITE))
         text_rect = text.get_rect()
         text_rect.center = (1600, 200)
         windowSurface.blit(text, text_rect)
 
-        text = font.render("Current top Score: " + "{:.2f}".format(current_best), True, (WHITE))
+        text = font.render("BEST        RUN", True, (WHITE))
         text_rect = text.get_rect()
-        text_rect.center = (1600, 225)
-        windowSurface.blit(text, text_rect)
-
-        text = font.render("Time elapsed: " + timer, True, (WHITE))
-        text_rect = text.get_rect()
-        text_rect.center = (1500, 250)
+        text_rect.center = (1625, 265)
         windowSurface.blit(text, text_rect)    
 
-
-        text = font.render("Fastest sector 1: " + "{:.2f}".format(best_sector1), True, (WHITE))
+        text = font.render("Fastest sector 1:   " + "{:.2f}".format(best_sector1), True, (WHITE))
         text_rect = text.get_rect()
         text_rect.center = (1500, 300)
         windowSurface.blit(text, text_rect)
 
-        text = font.render("Fastest sector 2: " + "{:.2f}".format(best_sector2), True, (WHITE))
+        text = font.render("{:.2f}".format(gen_sector1), True, (WHITE))
+        text_rect = text.get_rect()
+        text_rect.center = (1660, 300)
+        windowSurface.blit(text, text_rect)
+
+        text = font.render("Fastest sector 2:   " + "{:.2f}".format(best_sector2), True, (WHITE))
         text_rect = text.get_rect()
         text_rect.center = (1500, 350)
         windowSurface.blit(text, text_rect)
 
-        text = font.render("Fastest sector 3: " + "{:.2f}".format(best_sector3), True, (WHITE))
+        text = font.render("{:.2f}".format(gen_sector2), True, (WHITE))
+        text_rect = text.get_rect()
+        text_rect.center = (1660, 350)
+        windowSurface.blit(text, text_rect)
+
+        text = font.render("Fastest sector 3:   " + "{:.2f}".format(best_sector3), True, (WHITE))
         text_rect = text.get_rect()
         text_rect.center = (1500, 400)
         windowSurface.blit(text, text_rect)
 
-        text = generation_font.render("Fastest Lap: " + "{:.2f}".format(best_finish), True, (WHITE))
+        text = font.render("{:.2f}".format(gen_sector3), True, (WHITE))
+        text_rect = text.get_rect()
+        text_rect.center = (1660, 400)
+        windowSurface.blit(text, text_rect)
+
+        text = font.render("Fastest Lap:         " + "{:.2f}".format(best_finish) , True, (WHITE))
         text_rect = text.get_rect()
         text_rect.center = (1500, 500)
         windowSurface.blit(text, text_rect)
 
+        text = font.render("{:.2f}".format(gen_finish), True, (WHITE))
+        text_rect = text.get_rect()
+        text_rect.center = (1660, 500)
+        windowSurface.blit(text, text_rect)
+
         text = font.render("FPS: " + "{:.2f}".format(clock.get_fps()), True, (GREEN))
         text_rect = text.get_rect()
-        text_rect.center = (1500, 600)
+        text_rect.center = (1600, 600)
         windowSurface.blit(text, text_rect)
 
         text = font.render("Press 'q' to quit", True, (WHITE))
         text_rect = text.get_rect()
-        text_rect.center = (1500, 650)
+        text_rect.center = (1600, 650)
         windowSurface.blit(text, text_rect)
-
-        text = font.render("Press 'e' to speed up", True, (WHITE))
-        text_rect = text.get_rect()
-        text_rect.center = (1500, 675)
-        windowSurface.blit(text, text_rect)
-
-        text = font.render("Press 'd' to slow down", True, (WHITE))
-        text_rect = text.get_rect()
-        text_rect.center = (1500, 700)
-        windowSurface.blit(text, text_rect)
-
         
         pygame.display.update()
         clock.tick(fps)
@@ -345,6 +370,8 @@ if __name__ == "__main__":
     p.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
+    p.add_reporter(Checkpointer(generation_interval=10, filename_prefix='neat-checkpoint-' + str(best_finish)))
+    # p = Checkpointer.restore_checkpoint('neat-checkpoint-inf44') # Uncomment this line to restore from checkpoint
 
-    p.run(run_car, 100)
+    p.run(run_car, 50)
 
