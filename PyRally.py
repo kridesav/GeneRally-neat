@@ -18,7 +18,7 @@ game_data = {}
 game_lock = Lock()
 stop = False
 
-config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, 'config-feedforward.txt')
+config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction, neat.DefaultSpeciesSet, neat.DefaultStagnation, 'config-feedforward-rally.txt')
 p = neat.Population(config)
 p.add_reporter(neat.StdOutReporter(True))
 stats = neat.StatisticsReporter()
@@ -69,6 +69,10 @@ def eval_genomes(genomes, config):
                     pyautogui.keyUp('up')
                     pyautogui.keyDown('right')
                     pyautogui.keyUp('right')
+                elif action[2] > 0.5:  # Turn left
+                    pyautogui.keyUp('up')
+                    pyautogui.keyDown('left')
+                    pyautogui.keyUp('left')
                 # Update the fitness based on the result of the action
                 end_time = time.time()
                 time_taken = end_time - start_time
@@ -79,10 +83,6 @@ def eval_genomes(genomes, config):
 
                 min_distance = min(directions_data.values())
                 if min_distance[0] <= 15:
-                    if genome.fitness > 10:
-                        genome.fitness -= 10
-                    else:
-                        genome.fitness = 0
                     print('Crashed')
                     not_crashed = False
                     break
