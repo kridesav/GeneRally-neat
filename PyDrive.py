@@ -10,6 +10,7 @@ pygame.display.set_caption('PyDrive')
 scale_factor = 0.9
 generation = 0
 fps = 60
+draw_radar = False
 
 
 # set up the colors
@@ -75,6 +76,8 @@ class Car:
     def draw_radar(self, windowSurface):
         for r in self.radars:
             pos, dist = r
+            if draw_radar:
+                pygame.draw.line(windowSurface, (255, 255, 255), self.center, pos, 1)
             
     def check_collision(self, map):
         self.is_alive = True
@@ -198,7 +201,7 @@ def run_car(genomes, config):
         car.sector3_reached = False
         car.finish_reached = False
     
-    global generation, best_sector1, best_sector2, best_sector3, best_finish, best_score, fps, gen_sector1, gen_sector2, gen_sector3, gen_finish
+    global generation, best_sector1, best_sector2, best_sector3, best_finish, best_score, fps, gen_sector1, gen_sector2, gen_sector3, gen_finish, draw_radar
     generation += 1
     while True:
         windowSurface.fill(BLACK)
@@ -213,6 +216,11 @@ def run_car(genomes, config):
         for event in pygame.event.get():
             if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_q):
                 sys.exit(0)
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                if draw_radar:
+                    draw_radar = False
+                else:
+                    draw_radar = True
 
         for index, car in enumerate(cars):
             if not car.human:
@@ -403,7 +411,7 @@ def run_car(genomes, config):
         text_rect.center = (1600, 600)
         windowSurface.blit(text, text_rect)
 
-        text = font.render("Press 'q' to quit", True, (WHITE))
+        text = font.render("Press 'q' to quit, 'r' to draw radar", True, (WHITE))
         text_rect = text.get_rect()
         text_rect.center = (1600, 650)
         windowSurface.blit(text, text_rect)
